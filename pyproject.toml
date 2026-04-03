@@ -29,3 +29,8 @@ paloalto = "paloalto.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["paloalto*"]
+
+[tool.pytest.ini_options]
+env = [
+    "KERAS_BACKEND=numpy",
+]
