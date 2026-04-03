@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PALO ALTO Optimization Report</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1a1a2e;
+      background: #f5f6fa;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+      color: #fff;
+      padding: 2rem 2.5rem;
+    }
+    header h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: 0.04em; }
+    header p  { margin-top: 0.35rem; opacity: 0.75; font-size: 0.9rem; }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+    section { background: #fff; border-radius: 8px; padding: 1.5rem 2rem; margin-bottom: 1.75rem;
+              box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    section h2 {
+      font-size: 1.15rem; font-weight: 700; color: #0f3460;
+      border-bottom: 2px solid #e8eaf6; padding-bottom: 0.5rem; margin-bottom: 1rem;
+    }
+
+    /* KV grid */
+    .kv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.75rem; }
+    .kv-card {
+      background: #f0f4ff; border-radius: 6px; padding: 0.75rem 1rem;
+      border-left: 4px solid #0f3460;
+    }
+    .kv-card .label { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+    .kv-card .value { font-size: 1.1rem; font-weight: 700; color: #1a1a2e; margin-top: 0.15rem; }
+
+    /* Tables */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 680px) { .two-col { grid-template-columns: 1fr; } }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th { background: #e8eaf6; color: #0f3460; text-align: left; padding: 0.55rem 0.8rem;
+         font-weight: 600; }
+    td { padding: 0.45rem 0.8rem; border-bottom: 1px solid #f0f0f0; }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: #fafbff; }
+    .badge {
+      display: inline-block; font-size: 0.72rem; font-weight: 700;
+      border-radius: 4px; padding: 0.15rem 0.5rem; text-transform: uppercase;
+    }
+    .badge-agent    { background: #d0e8ff; color: #004a99; }
+    .badge-baseline { background: #ffe0d0; color: #993300; }
+    .badge-accept   { background: #d4edda; color: #155724; }
+    .badge-modify   { background: #fff3cd; color: #856404; }
+    .badge-inject   { background: #cce5ff; color: #004085; }
+    .badge-prune    { background: #f8d7da; color: #721c24; }
+    .badge-stop     { background: #d6d8db; color: #383d41; }
+
+    /* Plots */
+    .plot-wrap { text-align: center; }
+    .plot-wrap img { max-width: 100%; height: auto; border-radius: 6px;
+                     box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
+    /* Collapsible */
+    details summary {
+      cursor: pointer; font-weight: 600; color: #0f3460;
+      padding: 0.4rem 0; user-select: none;
+    }
+    details summary:hover { color: #e94560; }
+    details[open] summary { margin-bottom: 0.75rem; }
+
+    /* Caveats */
+    .caveat-list { list-style: none; }
+    .caveat-list li {
+      padding: 0.6rem 0.8rem 0.6rem 2.2rem; position: relative;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .caveat-list li:last-child { border-bottom: none; }
+    .caveat-list li::before {
+      content: "⚠";
+      position: absolute; left: 0.5rem; color: #e07b39;
+    }
+
+    /* Agent log */
+    .log-entry {
+      border-left: 4px solid #ccc; padding: 0.6rem 1rem; margin-bottom: 0.75rem;
+      border-radius: 0 4px 4px 0; background: #fafbff;
+    }
+    .log-entry.modify { border-color: #f0ad4e; }
+    .log-entry.inject { border-color: #5bc0de; }
+    .log-entry.prune  { border-color: #d9534f; }
+    .log-entry.stop   { border-color: #777; }
+    .log-entry.accept { border-color: #5cb85c; }
+    .log-meta { font-size: 0.78rem; color: #888; margin-top: 0.25rem; }
+
+    footer {
+      text-align: center; color: #999; font-size: 0.8rem;
+      padding: 1.5rem; margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>PALO ALTO &mdash; Optimization Report</h1>
+  <p>Pareto-guided Automatic Layout Optimization for Aligning Latent Topology in Omics embeddings</p>
+</header>
+
+<main>
+
+  <!-- 1. Overview -->
+  <section id="overview">
+    <h2>Overview</h2>
+    <div class="kv-grid">
+      <div class="kv-card">
+        <div class="label">Method</div>
+        <div class="value">{{ method | upper }}</div>
+      </div>
+      <div class="kv-card">
+        <div class="label">BO Mode</div>
+        <div class="value">{{ bo_mode | capitalize }}</div>
+      </div>
+      <div class="kv-card">
+        <div class="label">Cells</div>
+        <div class="value">{{ dataset_summary.n_cells | int | string }}</div>
+      </div>
+      <div class="kv-card">
+        <div class="label">Batches</div>
+        <div class="value">{{ dataset_summary.n_batches }}</div>
+      </div>
+      <div class="kv-card">
+        <div class="label">Cell Types</div>
+        <div class="value">{{ dataset_summary.n_types }}</div>
+      </div>
+      <div class="kv-card">
+        <div class="label">Agent Trials</div>
+        <div class="value">{{ agent_history | length }}</div>
+      </div>
+      <div class="kv-card">
+        <div class="label">Baseline Trials</div>
+        <div class="value">{{ baseline_history | length }}</div>
+      </div>
+      <div class="kv-card">
+        <div class="label">Wall Time</div>
+        <div class="value">{{ "%.1f" | format(wall_time_seconds) }}s</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Convergence -->
+  <section id="convergence">
+    <h2>Convergence</h2>
+    <div class="plot-wrap">
+      {{ convergence_plot }}
+    </div>
+    <p style="margin-top:0.75rem; color:#555; font-size:0.85rem;">
+      Plot shows best-so-far cumulative score (scIB + scGraph) over trials.
+      Green markers indicate agent interventions.
+    </p>
+  </section>
+
+  <!-- 3. Best Parameters -->
+  <section id="best-params">
+    <h2>Best Parameters</h2>
+    <div class="two-col">
+      <div>
+        <h3 style="font-size:0.95rem; margin-bottom:0.6rem;">
+          <span class="badge badge-agent">Agent-guided</span>
+        </h3>
+        <table>
+          <thead>
+            <tr><th>Parameter</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            {% for k, v in best_agent.params.items() %}
+            <tr>
+              <td>{{ k }}</td>
+              <td>
+                {% if v is float or v is number %}
+                  {{ "%.4g" | format(v) }}
+                {% else %}
+                  {{ v }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <table style="margin-top:0.75rem;">
+          <thead>
+            <tr><th>Metric</th><th>Score</th></tr>
+          </thead>
+          <tbody>
+            {% for k, v in best_agent.scores.items() %}
+            <tr>
+              <td>{{ k }}</td>
+              <td>{{ "%.4f" | format(v) }}</td>
+            </tr>
+            {% endfor %}
+            <tr style="font-weight:600;">
+              <td>objective</td>
+              <td>{{ "%.4f" | format(best_agent.objective) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h3 style="font-size:0.95rem; margin-bottom:0.6rem;">
+          <span class="badge badge-baseline">Baseline (BoTorch)</span>
+        </h3>
+        <table>
+          <thead>
+            <tr><th>Parameter</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            {% for k, v in best_baseline.params.items() %}
+            <tr>
+              <td>{{ k }}</td>
+              <td>
+                {% if v is float or v is number %}
+                  {{ "%.4g" | format(v) }}
+                {% else %}
+                  {{ v }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <table style="margin-top:0.75rem;">
+          <thead>
+            <tr><th>Metric</th><th>Score</th></tr>
+          </thead>
+          <tbody>
+            {% for k, v in best_baseline.scores.items() %}
+            <tr>
+              <td>{{ k }}</td>
+              <td>{{ "%.4f" | format(v) }}</td>
+            </tr>
+            {% endfor %}
+            <tr style="font-weight:600;">
+              <td>objective</td>
+              <td>{{ "%.4f" | format(best_baseline.objective) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Best Embedding Visualization -->
+  <section id="embedding-viz">
+    <h2>Best Embedding Visualization</h2>
+    <div class="plot-wrap">
+      {{ embedding_plot }}
+    </div>
+    <p style="margin-top:0.75rem; color:#555; font-size:0.85rem;">
+      Top row: best embedding found by the agent-guided run (cell type and batch coloring).
+      Bottom row: best embedding from the baseline run.
+    </p>
+  </section>
+
+  <!-- 5. Metric Breakdown -->
+  <section id="metric-breakdown">
+    <h2>Metric Breakdown</h2>
+    <details>
+      <summary>Agent-guided — all {{ agent_history | length }} trials</summary>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            {% for k in agent_history[0].params.keys() %}<th>{{ k }}</th>{% endfor %}
+            {% for k in agent_history[0].scores.keys() %}<th>{{ k }}</th>{% endfor %}
+            <th>objective</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for trial in agent_history %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            {% for v in trial.params.values() %}
+            <td>
+              {% if v is float or v is number %}{{ "%.4g" | format(v) }}{% else %}{{ v }}{% endif %}
+            </td>
+            {% endfor %}
+            {% for v in trial.scores.values() %}
+            <td>{{ "%.4f" | format(v) }}</td>
+            {% endfor %}
+            <td>{{ "%.4f" | format(trial.objective) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+
+    <details style="margin-top:1rem;">
+      <summary>Baseline — all {{ baseline_history | length }} trials</summary>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            {% for k in baseline_history[0].params.keys() %}<th>{{ k }}</th>{% endfor %}
+            {% for k in baseline_history[0].scores.keys() %}<th>{{ k }}</th>{% endfor %}
+            <th>objective</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for trial in baseline_history %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            {% for v in trial.params.values() %}
+            <td>
+              {% if v is float or v is number %}{{ "%.4g" | format(v) }}{% else %}{{ v }}{% endif %}
+            </td>
+            {% endfor %}
+            {% for v in trial.scores.values() %}
+            <td>{{ "%.4f" | format(v) }}</td>
+            {% endfor %}
+            <td>{{ "%.4f" | format(trial.objective) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <!-- 6. Agent Log -->
+  <section id="agent-log">
+    <h2>Agent Log</h2>
+    {% if agent_log %}
+      {% for entry in agent_log %}
+      <div class="log-entry {{ entry.action }}">
+        <div>
+          <strong>Trial {{ entry.trial_number }}</strong>
+          &nbsp;
+          <span class="badge badge-{{ entry.action }}">{{ entry.action }}</span>
+        </div>
+        <div class="log-meta">{{ entry.reasoning }}</div>
+        {% if entry.get('params') %}
+        <div class="log-meta" style="margin-top:0.3rem;">
+          Params: {{ entry.params }}
+        </div>
+        {% endif %}
+        {% if entry.get('new_bounds') %}
+        <div class="log-meta" style="margin-top:0.3rem;">
+          New bounds: {{ entry.new_bounds }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p style="color:#888;">No agent interventions recorded.</p>
+    {% endif %}
+  </section>
+
+  <!-- 7. Caveats -->
+  <section id="caveats">
+    <h2>Caveats</h2>
+    <ul class="caveat-list">
+      <li>
+        <strong>2D projection quality is distinct from representation quality.</strong>
+        High metric scores in 2D do not imply that the underlying embedding (e.g. latent space)
+        captures biology well. Always evaluate the original high-dimensional representations
+        independently.
+      </li>
+      <li>
+        <strong>Metrics are approximations.</strong>
+        scIB-style and scGraph-style metrics are heuristics.
+        They may favor certain dataset structures and penalize others in ways that do not
+        reflect ground truth biological relationships.
+      </li>
+      <li>
+        <strong>Parameter sensitivity can be dataset-specific.</strong>
+        Optimal <code>n_neighbors</code> and <code>min_dist</code> values transfer poorly
+        across datasets. Re-optimize on each new dataset.
+      </li>
+      <li>
+        <strong>Stochasticity.</strong>
+        UMAP and t-SNE are stochastic algorithms. Results may vary between runs even with
+        the same hyperparameters unless a random seed is fixed.
+      </li>
+      <li>
+        <strong>Batch correction and visualization are separate concerns.</strong>
+        Optimizing the 2D layout does not perform batch correction. If batches remain
+        entangled in the source embedding, no visualization tuning can resolve that.
+      </li>
+      <li>
+        <strong>Overfitting to metrics.</strong>
+        Bayesian optimization can overfit to the chosen metric landscape.
+        The recommended settings should be treated as a starting point, not a ground truth.
+      </li>
+    </ul>
+  </section>
+
+</main>
+
+<footer>
+  Generated by PALO ALTO v0.1.0 &bull; {{ method | upper }} &bull; {{ agent_history | length }} trials
+</footer>
+
+</body>
+</html>
