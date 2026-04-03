@@ -146,9 +146,6 @@ def optimize(
 
     # ---- 0. Setup ----
     embed_kwargs = dict(embed_kwargs or {})
-    # NUMAP requires use_residual_connections=True to work correctly
-    if method == "numap":
-        embed_kwargs.setdefault("use_residual_connections", True)
 
     output_dir = str(output_dir)
     os.makedirs(output_dir, exist_ok=True)
