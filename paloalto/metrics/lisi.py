@@ -24,6 +24,8 @@ def compute_lisi(
     coords: np.ndarray,
     labels: np.ndarray,
     perplexity: float = 30.0,
+    nn_idx: np.ndarray = None,
+    nn_dist: np.ndarray = None,
 ) -> np.ndarray:
     """Compute per-cell LISI scores.
 
@@ -31,6 +33,8 @@ def compute_lisi(
         coords: (n_cells, n_dims) embedding coordinates.
         labels: (n_cells,) categorical labels.
         perplexity: Perplexity for Gaussian kernel bandwidth.
+        nn_idx: Pre-computed kNN indices (n_cells, k). If None, built internally.
+        nn_dist: Pre-computed kNN distances (n_cells, k). If None, built internally.
 
     Returns:
         (n_cells,) LISI scores. Range [1, n_unique_labels].
@@ -39,12 +43,18 @@ def compute_lisi(
     n = coords.shape[0]
     k = min(int(perplexity * 3), n - 1)
 
-    # Build kNN — request k+1 neighbors so we can drop the self-neighbor
-    index = NNDescent(coords, n_neighbors=k + 1, random_state=42)
-    nn_idx, nn_dist = index.neighbor_graph
-    # Remove self (first column is always the query point itself)
-    nn_idx = nn_idx[:, 1:]
-    nn_dist = nn_dist[:, 1:]
+    if nn_idx is None or nn_dist is None:
+        # Build kNN — request k+1 neighbors so we can drop the self-neighbor
+        index = NNDescent(coords, n_neighbors=k + 1, random_state=42)
+        nn_idx, nn_dist = index.neighbor_graph
+        # Remove self (first column is always the query point itself)
+        nn_idx = nn_idx[:, 1:]
+        nn_dist = nn_dist[:, 1:]
+    else:
+        # Use pre-computed, truncate to k if needed
+        if nn_idx.shape[1] > k:
+            nn_idx = nn_idx[:, :k]
+            nn_dist = nn_dist[:, :k]
 
     # Encode labels as integers
     unique_labels, label_codes = np.unique(labels, return_inverse=True)

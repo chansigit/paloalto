@@ -22,70 +22,35 @@ from paloalto.metrics.lisi import compute_lisi
 
 
 def cell_type_asw(coords: np.ndarray, labels: np.ndarray) -> float:
-    """Average silhouette width on cell type labels, rescaled to [0, 1].
-
-    Args:
-        coords: (n_cells, n_dims) embedding coordinates.
-        labels: (n_cells,) cell type labels.
-
-    Returns:
-        ASW score in [0, 1]. 1 = perfectly separated clusters.
-    """
+    """Average silhouette width on cell type labels, rescaled to [0, 1]."""
     asw = silhouette_score(coords, labels)
     return float((asw + 1) / 2)  # from [-1, 1] to [0, 1]
 
 
-def nmi(coords: np.ndarray, labels: np.ndarray, resolution: float = 1.0) -> float:
-    """NMI between Leiden clusters on 2D kNN graph and ground truth labels.
-
-    Args:
-        coords: (n_cells, n_dims) embedding coordinates.
-        labels: (n_cells,) ground truth cell type labels.
-        resolution: Leiden clustering resolution.
-
-    Returns:
-        NMI score in [0, 1]. 1 = perfect agreement.
-    """
-    clusters = _leiden_on_coords(coords, resolution=resolution)
+def nmi(coords: np.ndarray, labels: np.ndarray, resolution: float = 1.0,
+        clusters: np.ndarray = None) -> float:
+    """NMI between Leiden clusters on 2D kNN graph and ground truth labels."""
+    if clusters is None:
+        clusters = _leiden_on_coords(coords, resolution=resolution)
     return float(normalized_mutual_info_score(labels, clusters))
 
 
-def ari(coords: np.ndarray, labels: np.ndarray, resolution: float = 1.0) -> float:
-    """ARI between Leiden clusters on 2D kNN graph and ground truth labels.
-
-    Args:
-        coords: (n_cells, n_dims) embedding coordinates.
-        labels: (n_cells,) ground truth cell type labels.
-        resolution: Leiden clustering resolution.
-
-    Returns:
-        ARI score in [0, 1]. 1 = perfect agreement.
-    """
-    clusters = _leiden_on_coords(coords, resolution=resolution)
+def ari(coords: np.ndarray, labels: np.ndarray, resolution: float = 1.0,
+        clusters: np.ndarray = None) -> float:
+    """ARI between Leiden clusters on 2D kNN graph and ground truth labels."""
+    if clusters is None:
+        clusters = _leiden_on_coords(coords, resolution=resolution)
     raw = float(adjusted_rand_score(labels, clusters))
-    # ARI can be negative; clip to [0, 1] for consistent downstream use
     return max(0.0, raw)
 
 
-def clisi(coords: np.ndarray, labels: np.ndarray, perplexity: float = 30.0) -> float:
-    """Cell-type LISI: normalized so that 1 = perfect purity, 0 = fully mixed.
-
-    Raw cLISI is in [1, n_types]. We normalize:
-        score = (n_types - median_lisi) / (n_types - 1)
-
-    Args:
-        coords: (n_cells, n_dims) embedding coordinates.
-        labels: (n_cells,) cell type labels.
-        perplexity: Perplexity for kNN kernel bandwidth in LISI computation.
-
-    Returns:
-        Normalized cLISI in [0, 1]. 1 = each cell's neighborhood is
-        dominated by a single cell type (high purity).
-    """
-    lisi_scores = compute_lisi(coords, labels, perplexity=perplexity)
+def clisi(coords: np.ndarray, labels: np.ndarray, perplexity: float = 30.0,
+          nn_idx: np.ndarray = None, nn_dist: np.ndarray = None) -> float:
+    """Cell-type LISI: normalized so that 1 = perfect purity, 0 = fully mixed."""
+    lisi_scores = compute_lisi(coords, labels, perplexity=perplexity,
+                               nn_idx=nn_idx, nn_dist=nn_dist)
     n_types = len(np.unique(labels))
     if n_types == 1:
-        # Only one type — trivially pure
         return 1.0
     median_lisi = np.median(lisi_scores)
     score = (n_types - median_lisi) / (n_types - 1)

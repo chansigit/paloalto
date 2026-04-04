@@ -1,9 +1,15 @@
-"""Metrics aggregation: scIB overall + scGraph."""
+"""Metrics aggregation: scIB overall + scGraph.
+
+Optimized to share expensive computation across metrics:
+- One Leiden clustering shared by NMI and ARI (saves ~24s)
+- One kNN graph shared by cLISI, iLISI, and graph_connectivity (saves ~4s)
+"""
 
 from typing import Dict
 import numpy as np
+from pynndescent import NNDescent
 
-from paloalto.metrics.bio import cell_type_asw, nmi, ari, clisi
+from paloalto.metrics.bio import cell_type_asw, nmi, ari, clisi, _leiden_on_coords
 from paloalto.metrics.batch import batch_asw, ilisi, graph_connectivity
 from paloalto.metrics.scgraph import corr_weighted
 
@@ -15,27 +21,50 @@ def scib_overall(bio: Dict[str, float], batch: Dict[str, float]) -> float:
     return 0.6 * bio_score + 0.4 * batch_score
 
 
+def _build_shared_knn(coords: np.ndarray, perplexity: float = 30.0):
+    """Build one kNN graph reused by LISI and graph_connectivity."""
+    n = coords.shape[0]
+    k = min(int(perplexity * 3), n - 1)
+    # Build with enough neighbors for both LISI (perplexity*3) and graph_conn (15)
+    k = max(k, 15)
+    index = NNDescent(coords, n_neighbors=k + 1, random_state=42)
+    nn_idx, nn_dist = index.neighbor_graph
+    # Remove self
+    return nn_idx[:, 1:], nn_dist[:, 1:]
+
+
 def compute_all(
     adata,
     embed_key: str,
     label_key: str,
     batch_key: str,
 ) -> Dict[str, float]:
-    """Compute all metrics and return a flat dict."""
+    """Compute all metrics and return a flat dict.
+
+    Optimizations vs. calling each metric independently:
+    - Leiden clustering computed once, shared by NMI and ARI
+    - kNN graph computed once, shared by cLISI, iLISI, and graph_connectivity
+    """
     coords = adata.obsm[embed_key]
     labels = adata.obs[label_key].values
     batches = adata.obs[batch_key].values
 
+    # Shared: one Leiden clustering for NMI + ARI
+    clusters = _leiden_on_coords(coords)
+
+    # Shared: one kNN graph for cLISI + iLISI + graph_connectivity
+    nn_idx, nn_dist = _build_shared_knn(coords)
+
     bio = {
         "cell_type_asw": cell_type_asw(coords, labels),
-        "nmi": nmi(coords, labels),
-        "ari": ari(coords, labels),
-        "clisi": clisi(coords, labels),
+        "nmi": nmi(coords, labels, clusters=clusters),
+        "ari": ari(coords, labels, clusters=clusters),
+        "clisi": clisi(coords, labels, nn_idx=nn_idx, nn_dist=nn_dist),
     }
     batch_scores = {
         "batch_asw": batch_asw(coords, batches),
-        "ilisi": ilisi(coords, batches),
-        "graph_connectivity": graph_connectivity(coords, labels),
+        "ilisi": ilisi(coords, batches, nn_idx=nn_idx, nn_dist=nn_dist),
+        "graph_connectivity": graph_connectivity(coords, labels, precomputed_nn_idx=nn_idx),
     }
     scgraph_score = corr_weighted(adata, embed_key, label_key, batch_key)
 

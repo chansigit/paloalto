@@ -26,12 +26,15 @@ def ilisi(
     coords: np.ndarray,
     batch_labels: np.ndarray,
     perplexity: float = 30.0,
+    nn_idx: np.ndarray = None,
+    nn_dist: np.ndarray = None,
 ) -> float:
     """Integration LISI: normalized so that 1 = perfect mixing, 0 = no mixing.
 
     Raw iLISI is in [1, n_batches]. We normalize: score = (median_lisi - 1) / (n_batches - 1).
     """
-    lisi_scores = compute_lisi(coords, batch_labels, perplexity=perplexity)
+    lisi_scores = compute_lisi(coords, batch_labels, perplexity=perplexity,
+                               nn_idx=nn_idx, nn_dist=nn_dist)
     n_batches = len(np.unique(batch_labels))
     median_lisi = np.median(lisi_scores)
     return float(np.clip((median_lisi - 1) / (n_batches - 1), 0, 1))
@@ -41,18 +44,25 @@ def graph_connectivity(
     coords: np.ndarray,
     type_labels: np.ndarray,
     n_neighbors: int = 15,
+    precomputed_nn_idx: np.ndarray = None,
 ) -> float:
     """Fraction of cell types whose kNN subgraph is fully connected."""
-    from pynndescent import NNDescent
     from scipy.sparse import csr_matrix
 
     n = coords.shape[0]
-    index = NNDescent(coords, n_neighbors=n_neighbors + 1, random_state=42)
-    nn_idx, _ = index.neighbor_graph
+
+    if precomputed_nn_idx is not None:
+        nn_idx = precomputed_nn_idx[:, :n_neighbors]
+    else:
+        from pynndescent import NNDescent
+        index = NNDescent(coords, n_neighbors=n_neighbors + 1, random_state=42)
+        nn_idx, _ = index.neighbor_graph
+        nn_idx = nn_idx[:, 1:]  # drop self
 
     # Build adjacency matrix
-    rows = np.repeat(np.arange(n), n_neighbors)
-    cols = nn_idx[:, 1:].ravel()
+    k = nn_idx.shape[1]
+    rows = np.repeat(np.arange(n), k)
+    cols = nn_idx.ravel()
     data = np.ones(len(rows), dtype=np.float32)
     adj = csr_matrix((data, (rows, cols)), shape=(n, n))
     adj = adj + adj.T  # symmetrize
@@ -64,7 +74,6 @@ def graph_connectivity(
         idx = np.where(mask)[0]
         sub_adj = adj[np.ix_(idx, idx)]
         n_components, _ = connected_components(sub_adj, directed=False)
-        # Fraction that is in the largest component
         scores.append(1.0 / n_components)
 
     return float(np.mean(scores))
