@@ -106,6 +106,11 @@ def get_default_space(method: str) -> SearchSpace:
             "se_dim": {"type": "int", "bounds": [2, 20]},
             "se_neighbors": {"type": "int", "bounds": [5, 100]},
         })
+    elif method == "umap":
+        return SearchSpace({
+            "n_neighbors": {"type": "int", "bounds": [5, 200], "log_scale": True},
+            "min_dist": {"type": "float", "bounds": [0.001, 0.99]},
+        })
     elif method == "tsne":
         return SearchSpace({
             "perplexity": {"type": "float", "bounds": [5.0, 100.0], "log_scale": True},

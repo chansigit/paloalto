@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 # Parameters from the search space that each embedder actually accepts.
 _EMBEDDER_PARAMS = {
     "numap": {"n_neighbors", "min_dist", "negative_sample_rate", "metric", "se_dim", "se_neighbors"},
+    "umap": {"n_neighbors", "min_dist", "metric"},
     "tsne": {"perplexity", "dof", "early_exaggeration", "metric", "learning_rate", "exaggeration"},
 }
 
@@ -250,7 +251,7 @@ def optimize(
     for i, params in enumerate(initial_candidates):
         trial_num = i + 1
         logger.info(f"  Init trial {trial_num}/{n_initial}: {params}")
-        model_path = str(Path(models_dir) / f"trial_{trial_num:03d}.pt")
+        model_path = str(Path(models_dir) / f"trial_{trial_num:03d}.model")
         t_trial = time.time()
         try:
             result = _evaluate_trial(
@@ -346,7 +347,7 @@ def optimize(
                 logger.warning(f"Agent review failed: {e}, using BO suggestion as-is")
 
         # Evaluate agent arm
-        agent_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_agent.pt")
+        agent_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_agent.model")
         logger.info(f"  Agent arm: {agent_params}")
         t_trial = time.time()
         try:
@@ -372,7 +373,7 @@ def optimize(
             logger.warning(f"  Agent trial failed: {e} — skipping")
 
         # --- Baseline arm ---
-        baseline_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_baseline.pt")
+        baseline_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_baseline.model")
         try:
             baseline_params = baseline_bo.suggest()
         except Exception as e:

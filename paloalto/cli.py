@@ -19,7 +19,7 @@ def main():
 @click.option("--embedding", default="X_pca", help="Key in adata.obsm")
 @click.option("--batch-key", default="batch", help="Batch column in adata.obs")
 @click.option("--label-key", default="cell_type", help="Cell type column in adata.obs")
-@click.option("--method", default="numap", type=click.Choice(["numap", "tsne"]))
+@click.option("--method", default="umap", type=click.Choice(["umap", "numap", "tsne"]))
 @click.option("--bo-mode", default="weighted", type=click.Choice(["weighted", "pareto"]))
 @click.option("--n-trials", default=30, type=int)
 @click.option("--n-initial", default=5, type=int)
