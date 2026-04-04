@@ -45,8 +45,12 @@ def _evaluate_trial(
     subsample_idx: np.ndarray,
     embed_kwargs: Dict,
     knn_cache=None,
-) -> Dict[str, float]:
-    """Run one trial: embed, compute metrics, return scores dict."""
+    save_path: str = None,
+) -> Dict:
+    """Run one trial: embed, compute metrics, optionally save model.
+
+    Returns dict with 'scib_overall', 'scgraph_score', 'coords', and 'embedder'.
+    """
     # Build embedder with only the params it accepts, plus embed_kwargs
     embedder_params = _filter_embedder_params(method, params)
     merged = {**embedder_params, **embed_kwargs}
@@ -57,6 +61,13 @@ def _evaluate_trial(
     if knn_cache is not None and method == "numap":
         fit_kwargs["knn_cache"] = knn_cache
     coords = embedder.fit(adata, **fit_kwargs)
+
+    # Save model if path provided
+    if save_path is not None:
+        try:
+            embedder.save(save_path)
+        except Exception as e:
+            logger.warning(f"  Failed to save model: {e}")
 
     # Store temporarily for metric computation
     adata.obsm["_paloalto_trial"] = coords
@@ -79,6 +90,8 @@ def _evaluate_trial(
     return {
         "scib_overall": scores["scib_overall"],
         "scgraph_score": scores.get("scgraph_corr_weighted", 0.0),
+        "coords": coords,
+        "embedder": embedder,
     }
 
 
@@ -200,18 +213,42 @@ def optimize(
         knn_cache = KNNCache(X_embed, max_k=200, seed=seed)
 
     # ---- 5. Sobol initialization (shared candidates) ----
+    models_dir = str(Path(output_dir) / "models")
+    os.makedirs(models_dir, exist_ok=True)
+
+    # Track best embedder + coords across all trials (avoid re-fit at the end)
+    best_agent_embedder = None
+    best_agent_coords = None
+    best_agent_score = -float("inf")
+    best_baseline_embedder = None
+    best_baseline_coords = None
+    best_baseline_score = -float("inf")
+
     initial_candidates = agent_bo.suggest_initial(n=n_initial)
     logger.info(f"Running {n_initial} Sobol initialization trials...")
 
     for i, params in enumerate(initial_candidates):
-        logger.info(f"  Init trial {i + 1}/{n_initial}: {params}")
+        trial_num = i + 1
+        logger.info(f"  Init trial {trial_num}/{n_initial}: {params}")
+        model_path = str(Path(models_dir) / f"trial_{trial_num:03d}.pt")
         try:
-            scores = _evaluate_trial(
+            result = _evaluate_trial(
                 adata, params, method, embedding_key, label_key, batch_key,
                 subsample_idx, embed_kwargs, knn_cache=knn_cache,
+                save_path=model_path,
             )
+            scores = {"scib_overall": result["scib_overall"], "scgraph_score": result["scgraph_score"]}
+            trial_score = scores["scib_overall"] + scores["scgraph_score"]
+            if trial_score > best_agent_score:
+                best_agent_score = trial_score
+                best_agent_embedder = result["embedder"]
+                best_agent_coords = result["coords"]
+            if trial_score > best_baseline_score:
+                best_baseline_score = trial_score
+                best_baseline_embedder = result["embedder"]
+                best_baseline_coords = result["coords"]
         except Exception as e:
-            logger.warning(f"  Trial {i + 1} failed: {e}")
+            logger.warning(f"  Trial {trial_num} failed: {e}")
             scores = {"scib_overall": 0.0, "scgraph_score": 0.0}
 
         # Observe on both arms (shared init)
@@ -281,18 +318,27 @@ def optimize(
                 logger.warning(f"Agent review failed: {e}, using BO suggestion as-is")
 
         # Evaluate agent arm
+        agent_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_agent.pt")
         logger.info(f"  Agent arm: {agent_params}")
         try:
-            agent_scores = _evaluate_trial(
+            agent_result = _evaluate_trial(
                 adata, agent_params, method, embedding_key, label_key, batch_key,
                 subsample_idx, embed_kwargs, knn_cache=knn_cache,
+                save_path=agent_model_path,
             )
+            agent_scores = {"scib_overall": agent_result["scib_overall"], "scgraph_score": agent_result["scgraph_score"]}
+            agent_trial_score = agent_scores["scib_overall"] + agent_scores["scgraph_score"]
+            if agent_trial_score > best_agent_score:
+                best_agent_score = agent_trial_score
+                best_agent_embedder = agent_result["embedder"]
+                best_agent_coords = agent_result["coords"]
         except Exception as e:
             logger.warning(f"  Agent trial failed: {e}")
             agent_scores = {"scib_overall": 0.0, "scgraph_score": 0.0}
         agent_bo.observe(agent_params, agent_scores["scib_overall"], agent_scores["scgraph_score"])
 
         # --- Baseline arm ---
+        baseline_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_baseline.pt")
         try:
             baseline_params = baseline_bo.suggest()
         except Exception as e:
@@ -301,10 +347,17 @@ def optimize(
 
         logger.info(f"  Baseline arm: {baseline_params}")
         try:
-            baseline_scores = _evaluate_trial(
+            baseline_result = _evaluate_trial(
                 adata, baseline_params, method, embedding_key, label_key, batch_key,
                 subsample_idx, embed_kwargs, knn_cache=knn_cache,
+                save_path=baseline_model_path,
             )
+            baseline_scores = {"scib_overall": baseline_result["scib_overall"], "scgraph_score": baseline_result["scgraph_score"]}
+            baseline_trial_score = baseline_scores["scib_overall"] + baseline_scores["scgraph_score"]
+            if baseline_trial_score > best_baseline_score:
+                best_baseline_score = baseline_trial_score
+                best_baseline_embedder = baseline_result["embedder"]
+                best_baseline_coords = baseline_result["coords"]
         except Exception as e:
             logger.warning(f"  Baseline trial failed: {e}")
             baseline_scores = {"scib_overall": 0.0, "scgraph_score": 0.0}
@@ -365,23 +418,12 @@ def optimize(
             for t in front
         ]
 
-    # ---- 7. Re-fit best model for report visualization ----
+    # ---- 7. Best model coords (tracked during trials, no re-fit needed) ----
     rng = np.random.RandomState(seed)
-
-    def _refit_best(best_trial):
-        """Re-fit the best params and return 2D coordinates."""
-        try:
-            bp = _filter_embedder_params(method, best_trial["params"])
-            merged = {**bp, **embed_kwargs}
-            embedder = get_embedder(method, **merged)
-            coords = embedder.fit(adata, embedding_key)
-            return coords
-        except Exception as e:
-            logger.warning(f"Re-fit failed: {e}, using random fallback")
-            return rng.randn(adata.n_obs, 2)
-
-    best_coords_agent = _refit_best(best_agent)
-    best_coords_baseline = _refit_best(best_baseline)
+    if best_agent_coords is None:
+        best_agent_coords = rng.randn(adata.n_obs, 2)
+    if best_baseline_coords is None:
+        best_baseline_coords = rng.randn(adata.n_obs, 2)
 
     # ---- 8. Generate report ----
     # Ensure objective key exists on all history entries for the template
@@ -404,8 +446,8 @@ def optimize(
         "baseline_history": baseline_history,
         "best_agent": best_agent,
         "best_baseline": best_baseline,
-        "best_coords_agent": best_coords_agent,
-        "best_coords_baseline": best_coords_baseline,
+        "best_coords_agent": best_agent_coords,
+        "best_coords_baseline": best_baseline_coords,
         "labels": adata.obs[label_key].values,
         "batches": adata.obs[batch_key].values,
         "agent_log": agent_judge.get_log() if agent_judge else [],
@@ -422,10 +464,12 @@ def optimize(
             "scib_overall": best_agent["scores"]["scib_overall"],
             "scgraph_score": best_agent["scores"]["scgraph_score"],
         },
+        "best_model": best_agent_embedder,  # has .transform(X_new) and .save(path)
         "trial_history": agent_history,
         "baseline_history": baseline_history,
         "pareto_front": pareto_front_result,
         "report_path": report_path,
+        "models_dir": models_dir,
     }
     logger.info(f"Optimization complete. Report: {report_path}")
     logger.info(f"Best params: {result['best_params']}")
