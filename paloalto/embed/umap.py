@@ -48,7 +48,7 @@ class UMAPEmbedder:
             min_dist=self.min_dist,
             metric=self.metric,
             n_components=2,
-            random_state=self.random_state,
+            n_jobs=-1,
         )
         self._coords = reducer.fit_transform(X)
         return self._coords
