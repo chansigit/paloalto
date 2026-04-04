@@ -251,6 +251,7 @@ def optimize(
         trial_num = i + 1
         logger.info(f"  Init trial {trial_num}/{n_initial}: {params}")
         model_path = str(Path(models_dir) / f"trial_{trial_num:03d}.pt")
+        t_trial = time.time()
         try:
             result = _evaluate_trial(
                 adata, params, method, embedding_key, label_key, batch_key,
@@ -259,6 +260,12 @@ def optimize(
             )
             scores = {"scib_overall": result["scib_overall"], "scgraph_score": result["scgraph_score"]}
             trial_score = _score(scores)
+            elapsed = time.time() - t_trial
+            logger.info(
+                f"  Init trial {trial_num}/{n_initial} done in {elapsed:.0f}s — "
+                f"scIB={scores['scib_overall']:.4f} scGraph={scores['scgraph_score']:.4f} "
+                f"obj={trial_score:.4f} best={max(best_agent_score, trial_score):.4f}"
+            )
             if trial_score > best_agent_score:
                 best_agent_score = trial_score
                 best_agent_embedder = result["embedder"]
@@ -341,6 +348,7 @@ def optimize(
         # Evaluate agent arm
         agent_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_agent.pt")
         logger.info(f"  Agent arm: {agent_params}")
+        t_trial = time.time()
         try:
             agent_result = _evaluate_trial(
                 adata, agent_params, method, embedding_key, label_key, batch_key,
@@ -354,6 +362,12 @@ def optimize(
                 best_agent_embedder = agent_result["embedder"]
                 best_agent_coords = agent_result["coords"]
             agent_bo.observe(agent_params, agent_scores["scib_overall"], agent_scores["scgraph_score"])
+            elapsed = time.time() - t_trial
+            logger.info(
+                f"  Agent {trial_num}/{n_trials} done in {elapsed:.0f}s — "
+                f"scIB={agent_scores['scib_overall']:.4f} scGraph={agent_scores['scgraph_score']:.4f} "
+                f"obj={agent_trial_score:.4f} best={best_agent_score:.4f}"
+            )
         except Exception as e:
             logger.warning(f"  Agent trial failed: {e} — skipping")
 
@@ -366,6 +380,7 @@ def optimize(
             baseline_params = baseline_bo.suggest_initial(1)[0]
 
         logger.info(f"  Baseline arm: {baseline_params}")
+        t_trial = time.time()
         try:
             baseline_result = _evaluate_trial(
                 adata, baseline_params, method, embedding_key, label_key, batch_key,
@@ -380,6 +395,12 @@ def optimize(
                 best_baseline_coords = baseline_result["coords"]
             baseline_bo.observe(
                 baseline_params, baseline_scores["scib_overall"], baseline_scores["scgraph_score"],
+            )
+            elapsed = time.time() - t_trial
+            logger.info(
+                f"  Baseline {trial_num}/{n_trials} done in {elapsed:.0f}s — "
+                f"scIB={baseline_scores['scib_overall']:.4f} scGraph={baseline_scores['scgraph_score']:.4f} "
+                f"obj={baseline_trial_score:.4f} best={best_baseline_score:.4f}"
             )
         except Exception as e:
             logger.warning(f"  Baseline trial failed: {e} — skipping")
