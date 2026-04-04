@@ -50,8 +50,15 @@ class NUMAPEmbedder:
     # Core API
     # ------------------------------------------------------------------
 
-    def fit(self, adata, embedding_key: str = "X_pca") -> np.ndarray:
-        """Fit NUMAP on the embedding stored in *adata* and return 2-D coords."""
+    def fit(self, adata, embedding_key: str = "X_pca", knn_cache=None) -> np.ndarray:
+        """Fit NUMAP on the embedding stored in *adata* and return 2-D coords.
+
+        Args:
+            adata: AnnData object.
+            embedding_key: Key in adata.obsm for the input embedding.
+            knn_cache: Optional KNNCache. If provided, monkey-patches
+                get_umap_graph to skip redundant kNN construction.
+        """
         from numap import NUMAP
 
         X = adata.obsm[embedding_key]
@@ -68,35 +75,37 @@ class NUMAPEmbedder:
             self.se_dim,
         )
 
-        model = NUMAP(
-            n_neighbors=self.n_neighbors,
-            min_dist=self.min_dist,
-            negative_sample_rate=self.negative_sample_rate,
-            metric=self.metric,
-            se_dim=self.se_dim,
-            se_neighbors=self.se_neighbors,
-            epochs=self.epochs,
-            lr=self.lr,
-            batch_size=self.batch_size,
-            random_state=self.random_state,
-            # NUMAP requires residual connections when learn_from_se=True
-            # (the default) so the encoder architecture matches the input
-            # dimension: the encoder is built for se_dim inputs and
-            # residual connections slice the spectral-embedding portion.
-            use_residual_connections=True,
-            **self.kwargs,
-        )
+        # Monkey-patch get_umap_graph if cache is available
+        import numap.umap_pytorch.modules as _modules
+        _original_get_umap_graph = _modules.get_umap_graph
+        if knn_cache is not None:
+            _modules.get_umap_graph = knn_cache.get_umap_graph
 
-        # NUMAP.fit() expects data that will be converted to tensors
-        # internally for the spectral embedding + PUMAP pipeline.
-        X_tensor = torch.tensor(X, dtype=torch.float32)
-        model.fit(X_tensor)
+        try:
+            model = NUMAP(
+                n_neighbors=self.n_neighbors,
+                min_dist=self.min_dist,
+                negative_sample_rate=self.negative_sample_rate,
+                metric=self.metric,
+                se_dim=self.se_dim,
+                se_neighbors=self.se_neighbors,
+                epochs=self.epochs,
+                lr=self.lr,
+                batch_size=self.batch_size,
+                random_state=self.random_state,
+                use_residual_connections=True,
+                **self.kwargs,
+            )
 
-        # Retrieve the 2-D embedding via transform (is_train=True uses
-        # the pre-computed spectral embedding rather than the KNN proxy).
-        coords = model.transform(X_tensor, is_train=True)
-        self._model = model
-        return np.asarray(coords)
+            X_tensor = torch.tensor(X, dtype=torch.float32)
+            model.fit(X_tensor)
+
+            coords = model.transform(X_tensor, is_train=True)
+            self._model = model
+            return np.asarray(coords)
+        finally:
+            # Always restore original function
+            _modules.get_umap_graph = _original_get_umap_graph
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         """Project new data through the fitted encoder."""

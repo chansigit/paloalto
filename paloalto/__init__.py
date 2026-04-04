@@ -44,6 +44,7 @@ def _evaluate_trial(
     batch_key: str,
     subsample_idx: np.ndarray,
     embed_kwargs: Dict,
+    knn_cache=None,
 ) -> Dict[str, float]:
     """Run one trial: embed, compute metrics, return scores dict."""
     # Build embedder with only the params it accepts, plus embed_kwargs
@@ -51,8 +52,11 @@ def _evaluate_trial(
     merged = {**embedder_params, **embed_kwargs}
     embedder = get_embedder(method, **merged)
 
-    # Fit and get 2D coordinates
-    coords = embedder.fit(adata, embedding_key)
+    # Fit and get 2D coordinates (pass knn_cache if available)
+    fit_kwargs = {"embedding_key": embedding_key}
+    if knn_cache is not None and method == "numap":
+        fit_kwargs["knn_cache"] = knn_cache
+    coords = embedder.fit(adata, **fit_kwargs)
 
     # Store temporarily for metric computation
     adata.obsm["_paloalto_trial"] = coords
@@ -185,7 +189,17 @@ def optimize(
         "embedding_dim": adata.obsm[embedding_key].shape[1],
     }
 
-    # ---- 4. Sobol initialization (shared candidates) ----
+    # ---- 4. Pre-build kNN cache (NUMAP only) ----
+    knn_cache = None
+    if method == "numap":
+        from paloalto.knn_cache import KNNCache
+        X_embed = adata.obsm[embedding_key]
+        if not isinstance(X_embed, np.ndarray):
+            X_embed = np.asarray(X_embed)
+        X_embed = X_embed.astype(np.float32)
+        knn_cache = KNNCache(X_embed, max_k=200, seed=seed)
+
+    # ---- 5. Sobol initialization (shared candidates) ----
     initial_candidates = agent_bo.suggest_initial(n=n_initial)
     logger.info(f"Running {n_initial} Sobol initialization trials...")
 
@@ -194,7 +208,7 @@ def optimize(
         try:
             scores = _evaluate_trial(
                 adata, params, method, embedding_key, label_key, batch_key,
-                subsample_idx, embed_kwargs,
+                subsample_idx, embed_kwargs, knn_cache=knn_cache,
             )
         except Exception as e:
             logger.warning(f"  Trial {i + 1} failed: {e}")
@@ -271,7 +285,7 @@ def optimize(
         try:
             agent_scores = _evaluate_trial(
                 adata, agent_params, method, embedding_key, label_key, batch_key,
-                subsample_idx, embed_kwargs,
+                subsample_idx, embed_kwargs, knn_cache=knn_cache,
             )
         except Exception as e:
             logger.warning(f"  Agent trial failed: {e}")
@@ -289,7 +303,7 @@ def optimize(
         try:
             baseline_scores = _evaluate_trial(
                 adata, baseline_params, method, embedding_key, label_key, batch_key,
-                subsample_idx, embed_kwargs,
+                subsample_idx, embed_kwargs, knn_cache=knn_cache,
             )
         except Exception as e:
             logger.warning(f"  Baseline trial failed: {e}")
