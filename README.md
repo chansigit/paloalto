@@ -1,3 +1,3 @@
 PALOALTO
 
-PALO ALTO: Pareto-guided Automatic Layout Optimization for Aligning Latent Topology in Omics embeddings
+PaloAlto: Pareto-guided Automatic Layout Optimization for Aligning Latent Topology in Omics embeddings

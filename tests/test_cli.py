@@ -9,7 +9,7 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
-        assert "PALO ALTO" in result.output
+        assert "PaloAlto" in result.output
 
     def test_run_help(self):
         runner = CliRunner()

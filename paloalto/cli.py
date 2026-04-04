@@ -1,4 +1,4 @@
-"""PALO ALTO CLI."""
+"""PaloAlto CLI."""
 
 import json
 import click
@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 @click.group()
 def main():
-    """PALO ALTO: Pareto-guided Automatic Layout Optimization for Aligning Latent Topology in Omics embeddings."""
+    """PaloAlto: Pareto-guided Automatic Layout Optimization for Aligning Latent Topology in Omics embeddings."""
     pass
 
 
@@ -33,7 +33,7 @@ def main():
 def run(input_path, embedding, batch_key, label_key, method, bo_mode,
         n_trials, n_initial, use_agent, agent_review_interval,
         subsample_n, output_dir, seed, config, embed_epochs):
-    """Run PALO ALTO optimization."""
+    """Run PaloAlto optimization."""
     if config:
         import yaml
         with open(config) as f:
