@@ -7,7 +7,7 @@ Optimized to share expensive computation across metrics:
 
 from typing import Dict
 import numpy as np
-from pynndescent import NNDescent
+import torch
 
 from paloalto.metrics.bio import cell_type_asw, nmi, ari, clisi, _leiden_on_coords
 from paloalto.metrics.batch import batch_asw, ilisi, graph_connectivity
@@ -22,14 +22,28 @@ def scib_overall(bio: Dict[str, float], batch: Dict[str, float]) -> float:
 
 
 def _build_shared_knn(coords: np.ndarray, perplexity: float = 30.0):
-    """Build one kNN graph reused by LISI and graph_connectivity."""
+    """Build one kNN graph reused by LISI and graph_connectivity.
+
+    Uses GPU brute-force for small/low-dim data (faster than pynndescent),
+    falls back to pynndescent for large/high-dim data.
+    """
     n = coords.shape[0]
     k = min(int(perplexity * 3), n - 1)
-    # Build with enough neighbors for both LISI (perplexity*3) and graph_conn (15)
     k = max(k, 15)
+
+    # GPU brute-force is faster for small n and low dims (typical: 10k × 2D)
+    if n <= 50000 and coords.shape[1] <= 10 and torch.cuda.is_available():
+        device = torch.device("cuda")
+        X = torch.from_numpy(coords.astype(np.float32)).to(device)
+        dists = torch.cdist(X, X)
+        dists.fill_diagonal_(float("inf"))
+        nn_dist, nn_idx = dists.topk(k, largest=False)
+        return nn_idx.cpu().numpy(), nn_dist.cpu().numpy()
+
+    # Fallback: pynndescent
+    from pynndescent import NNDescent
     index = NNDescent(coords, n_neighbors=k + 1, random_state=42)
     nn_idx, nn_dist = index.neighbor_graph
-    # Remove self
     return nn_idx[:, 1:], nn_dist[:, 1:]
 
 

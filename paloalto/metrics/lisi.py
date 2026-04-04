@@ -3,20 +3,17 @@
 Internalized from scIB. Computes per-cell diversity of a categorical label
 in local neighborhoods defined by a Gaussian kernel with specified perplexity.
 
+Torch-vectorized: binary search for sigma and Simpson's index are computed
+for all cells simultaneously on GPU (if available), eliminating the per-cell
+Python loop.
+
 Attribution: Luecken et al. (2022) "Benchmarking atlas-level data integration
 in single-cell genomics", Nature Methods. Original scIB code at
 https://github.com/theislab/scib under BSD-3-Clause.
-
-Behavior changes vs. scIB reference:
-- Uses pynndescent for kNN (instead of sklearn or FAISS) for speed and
-  reduced dependency footprint.
-- Binary search uses sigma (std dev) rather than beta (precision) to keep
-  the formula closer to the UMAP paper convention.
-- Self-neighbor removal is done via column-indexing rather than in-graph
-  masking.
 """
 
 import numpy as np
+import torch
 from pynndescent import NNDescent
 
 
@@ -27,7 +24,7 @@ def compute_lisi(
     nn_idx: np.ndarray = None,
     nn_dist: np.ndarray = None,
 ) -> np.ndarray:
-    """Compute per-cell LISI scores.
+    """Compute per-cell LISI scores (torch-vectorized).
 
     Args:
         coords: (n_cells, n_dims) embedding coordinates.
@@ -44,14 +41,11 @@ def compute_lisi(
     k = min(int(perplexity * 3), n - 1)
 
     if nn_idx is None or nn_dist is None:
-        # Build kNN — request k+1 neighbors so we can drop the self-neighbor
         index = NNDescent(coords, n_neighbors=k + 1, random_state=42)
         nn_idx, nn_dist = index.neighbor_graph
-        # Remove self (first column is always the query point itself)
         nn_idx = nn_idx[:, 1:]
         nn_dist = nn_dist[:, 1:]
     else:
-        # Use pre-computed, truncate to k if needed
         if nn_idx.shape[1] > k:
             nn_idx = nn_idx[:, :k]
             nn_dist = nn_dist[:, :k]
@@ -60,63 +54,80 @@ def compute_lisi(
     unique_labels, label_codes = np.unique(labels, return_inverse=True)
     n_labels = len(unique_labels)
 
-    # For each cell, compute Gaussian kernel weights and Simpson's index
-    lisi = np.zeros(n, dtype=np.float64)
-    for i in range(n):
-        distances = nn_dist[i].astype(np.float64)
-        # Binary search for sigma to match target perplexity
-        sigma = _find_sigma(distances, perplexity)
-        weights = np.exp(-distances**2 / (2 * sigma**2))
-        weights /= weights.sum()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Inverse Simpson's index: 1 / sum(p_c^2) where p_c is weighted
-        # proportion of cells from category c among the k neighbors
-        neighbor_labels = label_codes[nn_idx[i]]
-        proportions = np.zeros(n_labels, dtype=np.float64)
-        for j in range(len(neighbor_labels)):
-            proportions[neighbor_labels[j]] += weights[j]
-        simpson = np.sum(proportions**2)
-        lisi[i] = 1.0 / simpson
+    # (n, k) tensors on device
+    dist_t = torch.from_numpy(nn_dist.astype(np.float64)).to(device)
+    dist_sq = dist_t ** 2
 
-    # Clip to theoretical bounds [1, n_labels] to guard against floating-point
-    # rounding errors (e.g. simpson slightly > 1 when all neighbors share a
-    # label, producing lisi slightly < 1).
-    lisi = np.clip(lisi, 1.0, float(n_labels))
+    # --- Vectorized binary search for sigma ---
+    # All cells searched in parallel
+    sigma = _find_sigma_batched(dist_sq, perplexity, device=device)  # (n,)
+
+    # Compute weights: exp(-d^2 / (2*sigma^2))
+    weights = torch.exp(-dist_sq / (2 * sigma.unsqueeze(1) ** 2))  # (n, k)
+    weights = weights / weights.sum(dim=1, keepdim=True).clamp(min=1e-30)  # normalize
+
+    # --- Vectorized Simpson's index via scatter_add ---
+    # neighbor label codes: (n, k)
+    neighbor_labels = torch.from_numpy(label_codes[nn_idx]).to(device).long()
+
+    # Accumulate weighted proportions per label: (n, n_labels)
+    proportions = torch.zeros(n, n_labels, dtype=torch.float64, device=device)
+    proportions.scatter_add_(1, neighbor_labels, weights)
+
+    # Simpson = sum(p^2), LISI = 1/Simpson
+    simpson = (proportions ** 2).sum(dim=1)  # (n,)
+    lisi = 1.0 / simpson
+
+    lisi = lisi.clamp(1.0, float(n_labels)).cpu().numpy()
     return lisi
 
 
-def _find_sigma(
-    distances: np.ndarray,
+def _find_sigma_batched(
+    dist_sq: torch.Tensor,
     target_perplexity: float,
     tol: float = 1e-5,
     max_iter: int = 100,
-) -> float:
-    """Binary search for sigma that yields target perplexity.
+    device: torch.device = None,
+) -> torch.Tensor:
+    """Batched binary search for sigma across all cells simultaneously.
 
     Args:
-        distances: Sorted non-negative distances to k neighbors.
-        target_perplexity: Desired effective number of neighbors.
-        tol: Convergence tolerance on perplexity.
-        max_iter: Maximum number of bisection iterations.
+        dist_sq: (n, k) squared distances to k neighbors.
+        target_perplexity: Target perplexity value.
 
     Returns:
-        Sigma value (Gaussian std dev) achieving target perplexity.
+        (n,) sigma values.
     """
-    lo, hi = 1e-10, 1e4
+    n = dist_sq.shape[0]
+    lo = torch.full((n,), 1e-10, dtype=torch.float64, device=device)
+    hi = torch.full((n,), 1e4, dtype=torch.float64, device=device)
+    target_entropy = np.log2(target_perplexity)
+
     for _ in range(max_iter):
-        sigma = (lo + hi) / 2
-        weights = np.exp(-distances**2 / (2 * sigma**2))
-        sum_w = weights.sum()
-        if sum_w == 0:
-            lo = sigma
-            continue
-        p = weights / sum_w
-        entropy = -np.sum(p * np.log2(p + 1e-15))
-        perp = 2**entropy
-        if abs(perp - target_perplexity) < tol:
+        sigma = (lo + hi) / 2  # (n,)
+        # weights: (n, k)
+        weights = torch.exp(-dist_sq / (2 * sigma.unsqueeze(1) ** 2))
+        sum_w = weights.sum(dim=1)  # (n,)
+
+        # Normalize to probabilities
+        safe_sum = sum_w.clamp(min=1e-30)
+        p = weights / safe_sum.unsqueeze(1)  # (n, k)
+
+        # Entropy per cell
+        entropy = -(p * torch.log2(p + 1e-15)).sum(dim=1)  # (n,)
+        perp = 2 ** entropy
+
+        # Update bounds
+        too_low = perp < target_perplexity
+        too_high = perp >= target_perplexity
+        zero_sum = sum_w == 0
+        lo = torch.where(too_low | zero_sum, sigma, lo)
+        hi = torch.where(too_high & ~zero_sum, sigma, hi)
+
+        # Check convergence
+        if (torch.abs(perp - target_perplexity) < tol).all():
             break
-        if perp < target_perplexity:
-            lo = sigma
-        else:
-            hi = sigma
+
     return sigma
