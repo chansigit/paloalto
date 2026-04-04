@@ -108,7 +108,7 @@ def get_default_space(method: str) -> SearchSpace:
         })
     elif method == "umap":
         return SearchSpace({
-            "n_neighbors": {"type": "int", "bounds": [5, 200], "log_scale": True},
+            "n_neighbors": {"type": "int", "bounds": [5, 50], "log_scale": True},
             "min_dist": {"type": "float", "bounds": [0.001, 0.99]},
         })
     elif method == "tsne":
