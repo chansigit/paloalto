@@ -34,6 +34,22 @@ def _filter_embedder_params(method: str, params: Dict) -> Dict:
     return {k: v for k, v in params.items() if k in allowed}
 
 
+def _clamp_to_bounds(params: Dict, space) -> Dict:
+    """Clamp agent-provided params to search space bounds."""
+    clamped = dict(params)
+    for name, spec in space.params.items():
+        if name not in clamped:
+            continue
+        if spec["type"] in ("float", "int"):
+            lo, hi = spec["bounds"]
+            val = clamped[name]
+            clamped[name] = type(val)(max(lo, min(hi, val)))
+        elif spec["type"] == "categorical":
+            if clamped[name] not in spec["choices"]:
+                clamped[name] = spec["choices"][0]
+    return clamped
+
+
 def _evaluate_trial(
     adata,
     params: Dict,
@@ -252,8 +268,8 @@ def optimize(
                 best_baseline_embedder = result["embedder"]
                 best_baseline_coords = result["coords"]
         except Exception as e:
-            logger.warning(f"  Trial {trial_num} failed: {e}")
-            scores = {"scib_overall": 0.0, "scgraph_score": 0.0}
+            logger.warning(f"  Trial {trial_num} failed: {e} — skipping (not recorded in GP)")
+            continue
 
         # Observe on both arms (shared init)
         agent_bo.observe(params, scores["scib_overall"], scores["scgraph_score"])
@@ -304,8 +320,9 @@ def optimize(
 
                 if action.action == "modify" and action.params:
                     agent_params = {**agent_suggestion, **action.params}
+                    agent_params = _clamp_to_bounds(agent_params, search_space)
                 elif action.action == "inject" and action.params:
-                    agent_params = action.params
+                    agent_params = _clamp_to_bounds(action.params, search_space)
                 elif action.action == "prune" and action.new_bounds:
                     for pname, (lo, hi) in action.new_bounds.items():
                         search_space.prune(pname, new_lo=lo, new_hi=hi)
@@ -336,10 +353,9 @@ def optimize(
                 best_agent_score = agent_trial_score
                 best_agent_embedder = agent_result["embedder"]
                 best_agent_coords = agent_result["coords"]
+            agent_bo.observe(agent_params, agent_scores["scib_overall"], agent_scores["scgraph_score"])
         except Exception as e:
-            logger.warning(f"  Agent trial failed: {e}")
-            agent_scores = {"scib_overall": 0.0, "scgraph_score": 0.0}
-        agent_bo.observe(agent_params, agent_scores["scib_overall"], agent_scores["scgraph_score"])
+            logger.warning(f"  Agent trial failed: {e} — skipping")
 
         # --- Baseline arm ---
         baseline_model_path = str(Path(models_dir) / f"trial_{trial_num:03d}_baseline.pt")
@@ -362,12 +378,11 @@ def optimize(
                 best_baseline_score = baseline_trial_score
                 best_baseline_embedder = baseline_result["embedder"]
                 best_baseline_coords = baseline_result["coords"]
+            baseline_bo.observe(
+                baseline_params, baseline_scores["scib_overall"], baseline_scores["scgraph_score"],
+            )
         except Exception as e:
-            logger.warning(f"  Baseline trial failed: {e}")
-            baseline_scores = {"scib_overall": 0.0, "scgraph_score": 0.0}
-        baseline_bo.observe(
-            baseline_params, baseline_scores["scib_overall"], baseline_scores["scgraph_score"],
-        )
+            logger.warning(f"  Baseline trial failed: {e} — skipping")
 
     wall_time = time.time() - start_time
 

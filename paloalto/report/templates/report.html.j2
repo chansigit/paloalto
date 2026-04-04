@@ -273,6 +273,7 @@
     <h2>Metric Breakdown</h2>
     <details>
       <summary>Agent-guided — all {{ agent_history | length }} trials</summary>
+      {% if agent_history %}
       <table>
         <thead>
           <tr>
@@ -299,10 +300,14 @@
           {% endfor %}
         </tbody>
       </table>
+      {% else %}
+      <p style="color:#888;">No trials recorded.</p>
+      {% endif %}
     </details>
 
     <details style="margin-top:1rem;">
       <summary>Baseline — all {{ baseline_history | length }} trials</summary>
+      {% if baseline_history %}
       <table>
         <thead>
           <tr>
@@ -329,6 +334,9 @@
           {% endfor %}
         </tbody>
       </table>
+      {% else %}
+      <p style="color:#888;">No trials recorded.</p>
+      {% endif %}
     </details>
   </section>
 
@@ -344,12 +352,12 @@
           <span class="badge badge-{{ entry.action }}">{{ entry.action }}</span>
         </div>
         <div class="log-meta">{{ entry.reasoning }}</div>
-        {% if entry.get('params') %}
+        {% if entry.params is defined and entry.params %}
         <div class="log-meta" style="margin-top:0.3rem;">
           Params: {{ entry.params }}
         </div>
         {% endif %}
-        {% if entry.get('new_bounds') %}
+        {% if entry.new_bounds is defined and entry.new_bounds %}
         <div class="log-meta" style="margin-top:0.3rem;">
           New bounds: {{ entry.new_bounds }}
         </div>

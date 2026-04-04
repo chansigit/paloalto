@@ -45,6 +45,13 @@ def run(input_path, embedding, batch_key, label_key, method, bo_mode,
         method = cfg.get("method", method)
         bo_mode = cfg.get("bo_mode", bo_mode)
         n_trials = cfg.get("n_trials", n_trials)
+        n_initial = cfg.get("n_initial", n_initial)
+        use_agent = cfg.get("use_agent", use_agent)
+        agent_review_interval = cfg.get("agent_review_interval", agent_review_interval)
+        subsample_n = cfg.get("subsample_n", subsample_n)
+        seed = cfg.get("seed", seed)
+        if embed_epochs is None:
+            embed_epochs = cfg.get("embed_epochs")
 
     embed_kwargs = {}
     if embed_epochs is not None:

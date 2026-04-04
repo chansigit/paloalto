@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "paloalto"
 version = "0.1.0"
 description = "Pareto-guided Automatic Layout Optimization for Aligning Latent Topology in Omics embeddings"
+authors = [{name = "Sijie Chen"}]
 requires-python = ">=3.10"
 dependencies = [
     "anndata>=0.10",
