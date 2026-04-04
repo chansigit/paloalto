@@ -118,7 +118,6 @@ class ParametricTSNE:
     def fit(self, adata, embedding_key: str = "X_pca") -> np.ndarray:
         """Fit parametric t-SNE on *adata* and return 2-D coordinates."""
         torch.manual_seed(self.seed)
-        np.random.seed(self.seed)
 
         X = adata.obsm[embedding_key].astype(np.float32)
         self._input_dim = X.shape[1]

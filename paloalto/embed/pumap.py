@@ -75,11 +75,13 @@ class NUMAPEmbedder:
             self.se_dim,
         )
 
-        # Monkey-patch get_umap_graph if cache is available
-        import numap.umap_pytorch.modules as _modules
-        _original_get_umap_graph = _modules.get_umap_graph
+        # Monkey-patch get_umap_graph if cache is available.
+        # Must patch main.py's namespace (not modules.py) because main.py
+        # binds the name at import time via `from .modules import get_umap_graph`.
+        import numap.umap_pytorch.main as _main
+        _original_get_umap_graph = _main.get_umap_graph
         if knn_cache is not None:
-            _modules.get_umap_graph = knn_cache.get_umap_graph
+            _main.get_umap_graph = knn_cache.get_umap_graph
 
         try:
             model = NUMAP(
@@ -105,7 +107,7 @@ class NUMAPEmbedder:
             return np.asarray(coords)
         finally:
             # Always restore original function
-            _modules.get_umap_graph = _original_get_umap_graph
+            _main.get_umap_graph = _original_get_umap_graph
 
     def transform(self, X: np.ndarray) -> np.ndarray:
         """Project new data through the fitted encoder."""

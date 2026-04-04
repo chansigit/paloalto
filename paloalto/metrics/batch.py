@@ -8,17 +8,17 @@ from paloalto.metrics.lisi import compute_lisi
 
 
 def batch_asw(coords: np.ndarray, batch_labels: np.ndarray) -> float:
-    """Batch ASW: 1 - |ASW_batch|, rescaled to [0, 1].
+    """Batch ASW: 1 - |mean(ASW_batch)|, rescaled to [0, 1].
 
-    Lower absolute silhouette on batch labels means better mixing.
+    Per scIB: compute mean silhouette per batch, take absolute value,
+    then average across batches. Lower |ASW| means better mixing.
     """
     per_cell = silhouette_samples(coords, batch_labels)
-    # Per-batch mean absolute, then overall mean
     batches = np.unique(batch_labels)
     per_batch = []
     for b in batches:
         mask = batch_labels == b
-        per_batch.append(np.mean(np.abs(per_cell[mask])))
+        per_batch.append(abs(np.mean(per_cell[mask])))
     return float(1 - np.mean(per_batch))
 
 
@@ -72,8 +72,12 @@ def graph_connectivity(
     for t in types:
         mask = type_labels == t
         idx = np.where(mask)[0]
+        if len(idx) == 0:
+            continue
         sub_adj = adj[np.ix_(idx, idx)]
-        n_components, _ = connected_components(sub_adj, directed=False)
-        scores.append(1.0 / n_components)
+        n_components, comp_labels = connected_components(sub_adj, directed=False)
+        # Fraction of cells in the largest connected component (per scIB)
+        largest = np.bincount(comp_labels).max()
+        scores.append(largest / len(idx))
 
-    return float(np.mean(scores))
+    return float(np.mean(scores)) if scores else 0.0

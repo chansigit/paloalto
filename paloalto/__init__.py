@@ -2,7 +2,6 @@
 
 __version__ = "0.1.0"
 
-import copy
 import os
 import time
 from pathlib import Path
@@ -217,6 +216,11 @@ def optimize(
     os.makedirs(models_dir, exist_ok=True)
 
     # Track best embedder + coords across all trials (avoid re-fit at the end)
+    _w = weights or [0.5, 0.5]
+    def _score(s):
+        """Compute scalar score consistent with BO objective."""
+        return _w[0] * s["scib_overall"] + _w[1] * s["scgraph_score"]
+
     best_agent_embedder = None
     best_agent_coords = None
     best_agent_score = -float("inf")
@@ -238,7 +242,7 @@ def optimize(
                 save_path=model_path,
             )
             scores = {"scib_overall": result["scib_overall"], "scgraph_score": result["scgraph_score"]}
-            trial_score = scores["scib_overall"] + scores["scgraph_score"]
+            trial_score = _score(scores)
             if trial_score > best_agent_score:
                 best_agent_score = trial_score
                 best_agent_embedder = result["embedder"]
@@ -327,7 +331,7 @@ def optimize(
                 save_path=agent_model_path,
             )
             agent_scores = {"scib_overall": agent_result["scib_overall"], "scgraph_score": agent_result["scgraph_score"]}
-            agent_trial_score = agent_scores["scib_overall"] + agent_scores["scgraph_score"]
+            agent_trial_score = _score(agent_scores)
             if agent_trial_score > best_agent_score:
                 best_agent_score = agent_trial_score
                 best_agent_embedder = agent_result["embedder"]
@@ -353,7 +357,7 @@ def optimize(
                 save_path=baseline_model_path,
             )
             baseline_scores = {"scib_overall": baseline_result["scib_overall"], "scgraph_score": baseline_result["scgraph_score"]}
-            baseline_trial_score = baseline_scores["scib_overall"] + baseline_scores["scgraph_score"]
+            baseline_trial_score = _score(baseline_scores)
             if baseline_trial_score > best_baseline_score:
                 best_baseline_score = baseline_trial_score
                 best_baseline_embedder = baseline_result["embedder"]
