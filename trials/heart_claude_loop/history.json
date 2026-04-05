@@ -1,0 +1,98 @@
+{
+  "baseline": {
+    "scib_overall": 0.598436839430444,
+    "scgraph_score": 0.33124568191480075
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "name": "trial_01_n15_d0.500_s42",
+      "params": {
+        "n_neighbors": 15,
+        "min_dist": 0.5
+      },
+      "scores": {
+        "scib_overall": 0.6046127125715375,
+        "scgraph_score": 0.27119383858803375,
+        "objective": 0.4379032755797856
+      },
+      "plot": "/scratch/users/chensj16/projects/paloalto/trials/heart_claude_loop/plots/trial_01_n15_d0.500_s42_small.png",
+      "elapsed": 47.2
+    },
+    {
+      "trial": 2,
+      "name": "trial_02_n15_d0.300_s42",
+      "params": {
+        "n_neighbors": 15,
+        "min_dist": 0.3
+      },
+      "scores": {
+        "scib_overall": 0.6045764855351221,
+        "scgraph_score": 0.29364925170387074,
+        "objective": 0.4491128686194964
+      },
+      "plot": "/scratch/users/chensj16/projects/paloalto/trials/heart_claude_loop/plots/trial_02_n15_d0.300_s42_small.png",
+      "elapsed": 47.3
+    },
+    {
+      "trial": 3,
+      "name": "trial_03_n30_d0.300_s42",
+      "params": {
+        "n_neighbors": 30,
+        "min_dist": 0.3
+      },
+      "scores": {
+        "scib_overall": 0.5988313955842433,
+        "scgraph_score": 0.3355857704606202,
+        "objective": 0.46720858302243173
+      },
+      "plot": "/scratch/users/chensj16/projects/paloalto/trials/heart_claude_loop/plots/trial_03_n30_d0.300_s42_small.png",
+      "elapsed": 60.2
+    },
+    {
+      "trial": 4,
+      "name": "trial_04_n45_d0.250_s42",
+      "params": {
+        "n_neighbors": 45,
+        "min_dist": 0.25
+      },
+      "scores": {
+        "scib_overall": 0.59833537673093,
+        "scgraph_score": 0.3295938156858575,
+        "objective": 0.4639645962083937
+      },
+      "plot": "/scratch/users/chensj16/projects/paloalto/trials/heart_claude_loop/plots/trial_04_n45_d0.250_s42_small.png",
+      "elapsed": 68.8
+    },
+    {
+      "trial": 5,
+      "name": "trial_05_n45_d0.200_s42",
+      "params": {
+        "n_neighbors": 45,
+        "min_dist": 0.2
+      },
+      "scores": {
+        "scib_overall": 0.603793475851919,
+        "scgraph_score": 0.31314911645897364,
+        "objective": 0.45847129615544635
+      },
+      "plot": "/scratch/users/chensj16/projects/paloalto/trials/heart_claude_loop/plots/trial_05_n45_d0.200_s42_small.png",
+      "elapsed": 68.7
+    },
+    {
+      "trial": 6,
+      "name": "trial_06_n50_d0.500_s42",
+      "params": {
+        "n_neighbors": 50,
+        "min_dist": 0.5
+      },
+      "scores": {
+        "scib_overall": 0.6008210592654692,
+        "scgraph_score": 0.31092588847123004,
+        "objective": 0.45587347386834964
+      },
+      "plot": "/scratch/users/chensj16/projects/paloalto/trials/heart_claude_loop/plots/trial_06_n50_d0.500_s42_small.png",
+      "elapsed": 72.0
+    }
+  ]
+}
